@@ -208,10 +208,20 @@ public class HexGrid : MonoBehaviour
         return new Vector2(adjacentCellCenter.x, adjacentCellCenter.z);
     }
 
-    private void ConvertWorldToLogical(Vector3 hitPoint)
+    private HexCell GetHexCellHit(Vector3 hitPoint)
     {
-        float xCoord = hitPoint.x / WorldToCoordRatio.x;
-        float yCoord = hitPoint.y / WorldToCoordRatio.y;
+        //Convert the world coorindates into potentail logical coordinates.
+        int xCoord = (int)(hitPoint.x / WorldToCoordRatio.x); //always round down for x only.
+        int yCoord = Convert.ToInt32(hitPoint.y / WorldToCoordRatio.y); //round to nearest int
+
+        //2 potential hit points.{xCoord,yCoord} .. {xCoord+1,yCoord}
+        HexCell p1 = GetCellFromCoord(xCoord, yCoord);
+        HexCell p2 = GetCellFromCoord(xCoord + 1, yCoord);
+
+        //whichever is closer to the hitpoint is the proper intersect hexcell.
+        Vector3 dis1 = p1.Center - hitPoint;
+        Vector3 dis2 = p2.Center - hitPoint;
+        return dis1.magnitude < dis2.magnitude ? p1 : p2;
     }
 
     private void GenAllNeighbourPointsNotGeneratedYet(HexCell refPiece, Queue<HexCell> cellsToGenerate)
