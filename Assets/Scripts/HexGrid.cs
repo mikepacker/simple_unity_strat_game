@@ -14,7 +14,6 @@ public class HexGrid : MonoBehaviour
     public Text consoleText;
     string totalNumberOfVert = "";
 
-
     /// <summary>All meshes required to draw the HexGrid</summary>
     public List<GameObject> GridMeshes { get; private set; }
 
@@ -26,15 +25,13 @@ public class HexGrid : MonoBehaviour
     private Dictionary<float, int> xCoord2WorldSpaceX = new Dictionary<float, int>();
     private Dictionary<float, int> zCoord2WorldSpaceZ = new Dictionary<float, int>();
 
-    /// <summary>A mapping of world space to logical space. Since we only support flat top hex's and not angled ones.</summary>
-    public Dictionary<float,int> XWorld2LogicalMapping { get; private set; }
-    public Dictionary<float,int> ZWorld2LogicalMapping { get; private set; }
+    public Vector2 WorldToCoordRatio { get; private set; }
 
     /// <summary>Get the current cell based on logical coordinates.</summary>
     public HexCell GetCellFromCoord(int x, int z)
     {
-        if(Coord2GridPiece.ContainsKey(x) && Coord2GridPiece[x].ContainsKey(z))
-            return Coord2GridPiece[x][z]; 
+        if (Coord2GridPiece.ContainsKey(x) && Coord2GridPiece[x].ContainsKey(z))
+            return Coord2GridPiece[x][z];
 
         return null;
     }
@@ -42,23 +39,17 @@ public class HexGrid : MonoBehaviour
     void Start()
     {
         DateTime startGrid = DateTime.Now;
-            
+
         Coord2GridPiece = new Dictionary<int, Dictionary<int, HexCell>>();
         GridMeshes = new List<GameObject>();
-        GenerateHexGrid(new Vector2(1,1));
+        GenerateHexGrid(new Vector2(1, 1));
 
         uniqueWordSpaceXValues = new List<float>(xCoord2WorldSpaceX.Keys);
         uniqueWordSpaceXValues.Sort();
         uniqueWordSpaceZValues = new List<float>(zCoord2WorldSpaceZ.Keys);
         uniqueWordSpaceZValues.Sort();
 
-        XWorld2LogicalMapping = new Dictionary<float, int>();
-        ZWorld2LogicalMapping = new Dictionary<float, int>();
-
-        int hexCellCount = 0;
-        foreach(Dictionary<int,HexCell> dic in Coord2GridPiece.Values)
-            hexCellCount += dic.Values.Count;
-        
+        WorldToCoordRatio = ComputeWordToLogicalRatios();
 
         using (StreamWriter sw = new StreamWriter("timing.log", true))
         {
@@ -68,12 +59,17 @@ public class HexGrid : MonoBehaviour
 
             int totalVerticies = 0;
             uint totalIndexes = 0;
-            foreach(GameObject obj in GridMeshes)
+            foreach (GameObject obj in GridMeshes)
             {
                 Mesh mesh = obj.GetComponent<MeshFilter>().mesh;
                 totalIndexes += mesh.GetIndexCount(0);
                 totalVerticies += mesh.vertexCount;
             }
+
+            int hexCellCount = 0;
+            foreach (Dictionary<int, HexCell> dic in Coord2GridPiece.Values)
+                hexCellCount += dic.Values.Count;
+
 
             totalNumberOfVert = string.Format("{2}\nTotal verticies: {0}\nTotal Indexes: {1}\nHex Cell Count: {3}", totalVerticies, totalIndexes, timeToGen, hexCellCount);
             sw.WriteLine(totalNumberOfVert);
@@ -93,6 +89,15 @@ public class HexGrid : MonoBehaviour
             fpsTimePassed += Time.deltaTime;
             fpsFrameSum++;
         }
+
+
+        Ray camRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        RaycastHit floorHit;
+        if (Terrain.activeTerrain.GetComponent<Collider>().Raycast(camRay, out floorHit, 1000f))
+        {
+            ConvertWorldToLogical(floorHit.point);
+
+        }
     }
 
     #region HEXGRID_GENERATION_FUNCTIONS
@@ -101,7 +106,7 @@ public class HexGrid : MonoBehaviour
     private GameObject CreateGridObject(Vector3[] verticies, int[] indicies)
     {
         GameObject gridMesh = new GameObject();
-       
+
         gridMesh.name = "GridMesh";
         gridMesh.transform.position = new Vector3(0, GRIDYTRANSLATE, 0);
 
@@ -113,10 +118,10 @@ public class HexGrid : MonoBehaviour
         Mesh mesh = new Mesh();
         mesh.vertices = verticies;
         mesh.SetIndices(indicies, MeshTopology.Lines, 0);
-             
+
 
         meshFilter.mesh = mesh;
-        
+
         meshRend = gridMesh.GetComponent<MeshRenderer>();
         meshRend.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
         meshRend.receiveShadows = false;
@@ -172,7 +177,7 @@ public class HexGrid : MonoBehaviour
         {
             HexCell currentCell = hexCellPiecesToAdd.Dequeue();
 
-            currentCell.GenearteHexCell(this, verticies, indicies, gameMeshIndex);
+            currentCell.GenearteHexCell(verticies, indicies, gameMeshIndex);
             GenAllNeighbourPointsNotGeneratedYet(currentCell, hexCellPiecesToAdd);
 
             //a gridmesh in unity cannot contain more than 65k verticies, so we need to spread the hex grid over several
@@ -185,9 +190,28 @@ public class HexGrid : MonoBehaviour
                 indicies = new List<int>(65000 * 4);
                 gameMeshIndex++;
             }
-            
+
         }
         GridMeshes.Add(CreateGridObject(verticies.ToArray(), indicies.ToArray()));
+    }
+
+    /// <summary>Find the amount in world X to go 1 coordinate X in hexcell, same with Z</summary>
+    /// <param name="worldToLogicalX"></param>
+    /// <param name="worldToLogicalZ"></param>
+    private Vector2 ComputeWordToLogicalRatios()
+    {
+        //Computer the center of an adjacent cell at point +1,+1 (Vector 1 and 2)
+        HexCell cell = new HexCell(null, new Vector3(0, 0, 0), 0, 0);
+        cell.GenearteHexCell(new List<Vector3>(), new List<int>(), 0);
+        Vector3 adjacentCellCenter = Vector3.Lerp(cell.Vertex[1], cell.Vertex[2], 0.5f) * 2;
+
+        return new Vector2(adjacentCellCenter.x, adjacentCellCenter.z);
+    }
+
+    private void ConvertWorldToLogical(Vector3 hitPoint)
+    {
+        float xCoord = hitPoint.x / WorldToCoordRatio.x;
+        float yCoord = hitPoint.y / WorldToCoordRatio.y;
     }
 
     private void GenAllNeighbourPointsNotGeneratedYet(HexCell refPiece, Queue<HexCell> cellsToGenerate)
@@ -197,15 +221,15 @@ public class HexGrid : MonoBehaviour
         // 4\__/3
         Vector3 midPoint = Vector3.Lerp(refPiece.Vertex[0], refPiece.Vertex[1], 0.5f);
 
-        for(int i=0; i <= 5; i++)
+        for (int i = 0; i <= 5; i++)
         {
             Vector3 point = Quaternion.AngleAxis(i * 60, Vector3.up) * (midPoint - refPiece.Center);
             point *= 2;
             point += refPiece.Center;
             if (IsPositionInBounds(point))
             {
-                int newCoordX = refPiece.CoordX + HexCell.CoordOffSets[i,0];
-                int newCoordZ = refPiece.CoordZ + HexCell.CoordOffSets[i,1];
+                int newCoordX = refPiece.CoordX + HexCell.CoordOffSets[i, 0];
+                int newCoordZ = refPiece.CoordZ + HexCell.CoordOffSets[i, 1];
                 if (Coord2GridPiece.ContainsKey(newCoordX) && Coord2GridPiece[newCoordX].ContainsKey(newCoordZ))
                     continue;
 

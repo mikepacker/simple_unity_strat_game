@@ -51,7 +51,7 @@ public class HexCell
 
     #endregion
 
-    public void GenearteHexCell(HexGrid grid, List<Vector3> verticies, List<int> indicies, int gridMeshIndex)
+    public void GenearteHexCell(List<Vector3> verticies, List<int> indicies, int gridMeshIndex)
     {
         //  0__1    where each vertex represents
         // 5/  \2
